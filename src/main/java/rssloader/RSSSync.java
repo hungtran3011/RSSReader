@@ -3,6 +3,9 @@ package rssloader;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.BufferedReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.ZonedDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -21,24 +24,27 @@ public class RSSSync {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             DocumentBuilder builder = factory.newDocumentBuilder();
 
-            ZonedDateTime now = ZonedDateTime.now(ZoneOffset.UTC);
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("EEE, dd MMM yyyy HH:mm:ss");
-            String formattedDate = now.format(formatter);
-            System.out.println(formattedDate);
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .GET()
-                    .header("If-Modified-Since", formattedDate)
-                    .header("Last-Modified", formattedDate)
-                    .uri(URI.create(urlString))
-                    .build();
-            connection.setRequestMethod(request.method());
-            connection.connect();
+            Path file = Path.of(cacheURIString);
+            if (file.toFile().exists()) {
+                BasicFileAttributes attr = Files.readAttributes(file, BasicFileAttributes.class);
+                ZonedDateTime lastModified = attr.lastModifiedTime().toInstant().atZone(ZoneOffset.UTC);
+                connection.setRequestMethod("HEAD");
+                connection.setRequestProperty("If-Modified-Since", lastModified.format(DateTimeFormatter.RFC_1123_DATE_TIME));
+                connection.connect();
+                int responseCode = connection.getResponseCode();
+                System.out.println(responseCode);
+                if (responseCode == 304) {
+                    return;
+                }
+            }
+            else {
+                connection.setRequestMethod("GET");
+                connection.connect();
+            }
             int responseCode = connection.getResponseCode();
-            System.out.println(responseCode);
             if (responseCode == 200) {
                 InputStream inputStream = connection.getInputStream();
-                Document doc = builder.parse(inputStream);
+//                Document doc = builder.parse(inputStream);
                 try {
                     FileOutputStream fileOutputStream = new FileOutputStream(cacheURIString);
                     InputStream iStream = url.openStream();
